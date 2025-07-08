@@ -56,12 +56,12 @@ class DatabaseBackupCommand extends Command
             }
 
             if ( $this->option( 'd' ) === false ) {
-                $filename  = "backup-" . Carbon::now()->format('Y-m-d') . ".gz";
-                $full_path = storage_path() . "/app/" . $directoryName . "/" . $filename;
-
                 if ( !Storage::disk( $storageDisk )->exists( $directoryName ) ) {
                     Storage::disk( $storageDisk )->makeDirectory( $directoryName );
                 }
+
+                $filename  = "backup-" . Carbon::now()->format('Y-m-d') . ".gz";
+                $full_path = storage_path() . "/app/" . $directoryName . "/" . $filename;
 
                 $username = config( 'database.connections.mysql.username' );
                 $password = config( 'database.connections.mysql.password' );
