@@ -56,6 +56,11 @@ class DatabaseBackupCommand extends Command
             }
 
             if ( $this->option( 'd' ) === false ) {
+                $physicalPath = storage_path() . "/app/" . $directoryName;
+                if ( !file_exists( $physicalPath ) ) {
+                    mkdir( $physicalPath, 0755, true );
+                }
+
                 if ( !Storage::disk( $storageDisk )->exists( $directoryName ) ) {
                     Storage::disk( $storageDisk )->makeDirectory( $directoryName );
                 }
