@@ -31,6 +31,8 @@ class DatabaseBackupCommand extends Command
      */
     public function handle()
     {
+        $this->info( "▶️ Starting DatabaseBackupCommand" );
+
         try {
             $storageDisk    = config( 'backup-db.storage_disk', 'local' );
             $directoryName  = config( 'backup-db.storage_directory', 'backup' );
