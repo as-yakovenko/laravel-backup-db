@@ -135,15 +135,7 @@ class DatabaseBackupCommand extends Command
 
         $errorFile = tempnam( sys_get_temp_dir(), 'mysql_error_' );
 
-        $command = "
-            mysqldump
-            --user=" . escapeshellarg( $username ) . "
-            --password=" . escapeshellarg( $password ) . "
-            --host=" . escapeshellarg( $host ) . "
-            --port=" . escapeshellarg( $port ) . "
-            --skip-comments
-            --single-transaction
-            " . escapeshellarg( $database ) . " 2>" . escapeshellarg( $errorFile ) . " | gzip > " . escapeshellarg( $full_path );
+        $command = "mysqldump --user=" . escapeshellarg( $username ) . " --password=" . escapeshellarg( $password ) . " --host=" . escapeshellarg( $host ) . " --port=" . escapeshellarg( $port ) . " " . escapeshellarg( $database ) . " 2>" . escapeshellarg( $errorFile ) . " | gzip > " . escapeshellarg( $full_path );
 
         $mysqldumpCheck = ( strtoupper( substr( PHP_OS, 0, 3 ) ) === 'WIN' )
             ? 'where mysqldump'
