@@ -46,7 +46,6 @@ class DatabaseBackupCommand extends Command
 
             $storage = Storage::disk( $storageDisk );
 
-            // Проверка на несовместимые опции
             if ( $onlyRun && ( $deleteOnly || $autoCleanup || $deleteAll ) ) {
                 $this->error( '--run cannot be combined with --d, --auto or --all' );
                 return 1;
@@ -132,18 +131,11 @@ class DatabaseBackupCommand extends Command
         $password = config( 'database.connections.mysql.password' );
         $host     = config( 'database.connections.mysql.host' );
         $database = config( 'database.connections.mysql.database' );
+        $port     = config( 'database.connections.mysql.port', '3306' );
 
-        $tempFile = tempnam( sys_get_temp_dir(), 'mysql_backup_' );
-        file_put_contents( $tempFile, "[client]\npassword={$password}\n" );
+        $errorFile = tempnam( sys_get_temp_dir(), 'mysql_error_' );
 
-        $command = sprintf(
-            'mysqldump --defaults-file=%s --user=%s --host=%s --skip-comments --single-transaction %s | gzip > %s',
-            escapeshellarg( $tempFile ),
-            escapeshellarg( $username ),
-            escapeshellarg( $host ),
-            escapeshellarg( $database ),
-            escapeshellarg( $full_path )
-        );
+        $command = "mysqldump --user=" . $username ." --password=" . $password . " --host=" . $host . " --port=" . $port . " " . $database . " 2>" . escapeshellarg( $errorFile ) . " | gzip > " . escapeshellarg( $full_path );
 
         $mysqldumpCheck = ( strtoupper( substr( PHP_OS, 0, 3 ) ) === 'WIN' )
             ? 'where mysqldump'
@@ -156,31 +148,40 @@ class DatabaseBackupCommand extends Command
             if ( $logging ) {
                 Log::error( 'Database backup: mysqldump utility not found.' );
             }
-            unlink( $tempFile );
             return;
         }
 
         exec( $command, $output, $returnVar );
-        unlink( $tempFile );
 
-        if ( $returnVar === 0 ) {
-            $this->info( "Backup created successfully: $filename" );
+        $errorOutput = file_exists( $errorFile ) ? file_get_contents( $errorFile ) : '';
+
+        if ( file_exists( $errorFile ) ) {
+            unlink( $errorFile );
+        }
+
+        $fileSize = file_exists( $full_path ) ? filesize( $full_path ) : 0;
+
+        if ( !empty( $errorOutput ) ) {
+            $this->warn( "mysqldump warning: " . trim( $errorOutput ) );
+        }
+
+        if ( $fileSize > 0 ) {
+            $this->info( "Backup created successfully: $filename (size: " . number_format( $fileSize / 1024, 2 ) . " KB)" );
 
             if ( $logging ) {
                 Log::info( "Database backup: Backup created successfully", [
                     'filename' => $filename,
                     'path'     => $full_path,
+                    'size'     => $fileSize,
                     'database' => $database,
                 ]);
             }
         } else {
-            $this->error( "Backup failed with exit code: $returnVar" );
+            $this->error( "Backup failed - no file created" );
 
             if ( $logging ) {
-                Log::error( "Database backup: Backup failed", [
-                    'exit_code' => $returnVar,
-                    'output'    => $output,
-                    'database'  => $database,
+                Log::error( "Database backup: No file created", [
+                    'database' => $database,
                 ]);
             }
         }
