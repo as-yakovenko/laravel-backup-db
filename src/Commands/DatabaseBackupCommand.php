@@ -11,7 +11,7 @@ class DatabaseBackupCommand extends Command
 {
     protected $signature = 'yas:backup {--run : Only create a backup}
         {--all : Delete all backups and create a current one}
-        {--auto : Create a current one and delete backups older than N days}
+        {--auto : Delete backups older than N days and create a current one}
         {--d : Only delete backups older than N days}';
 
     protected $description = 'Backup database with automatic cleanup options';
@@ -33,36 +33,31 @@ class DatabaseBackupCommand extends Command
     {
         $this->info( "▶️  Starting DatabaseBackupCommand" );
 
+        // Load configuration
+        $storageDisk   = config( 'backup-db.storage_disk', 'local' );
+        $directoryName = config( 'backup-db.storage_directory', 'backup' );
+        $cleanupDays   = config( 'backup-db.cleanup_days', 15 );
+        $logging       = config( 'backup-db.logging', true );
+
         try {
-            $storageDisk    = config( 'backup-db.storage_disk', 'local' );
-            $directoryName  = config( 'backup-db.storage_directory', 'backup' );
-            $cleanupDays    = config( 'backup-db.cleanup_days', 15 );
-            $logging        = config( 'backup-db.logging', true );
 
-            $onlyRun     = $this->option( 'run' );
-            $deleteOnly  = $this->option( 'd' );
-            $autoCleanup = $this->option( 'auto' );
-            $deleteAll   = $this->option( 'all' );
-
-            $storage = Storage::disk( $storageDisk );
-
-            if ( $onlyRun && ( $deleteOnly || $autoCleanup || $deleteAll ) ) {
-                $this->error( '--run cannot be combined with --d, --auto or --all' );
-                return 1;
+            // Process cleanup if not --run only
+            if ( $this->option( 'run' ) === false ) {
+                $this->processCleanup( $storageDisk, $directoryName, $cleanupDays, $logging );
             }
 
-            if ( !$onlyRun ) {
-                $this->deleteBackups( $storage, $directoryName, $cleanupDays, $deleteAll, $autoCleanup, $logging );
+            // Create backup if not --d only
+            if ( $this->option( 'd' ) === false ) {
+                $this->createBackup( $storageDisk, $directoryName, $logging );
             }
 
-            if ( !$deleteOnly ) {
-                $this->createBackup( $storage, $directoryName, $logging );
-            }
+            $this->info( "✅ DatabaseBackupCommand completed successfully" );
 
             return 0;
 
         } catch ( \Exception $e ) {
-            $this->error( "Backup failed with exception: " . $e->getMessage() );
+
+            $this->error( "❌ DatabaseBackupCommand failed: " . $e->getMessage() );
 
             if ( config( 'backup-db.logging', true ) ) {
                 Log::error( "Database backup: Exception occurred", [
@@ -72,118 +67,189 @@ class DatabaseBackupCommand extends Command
             }
 
             return 1;
+
         }
     }
 
     /**
-     * Delete backups older than specified days or all backups if --all is specified.
+     * Process cleanup of old backup files
      *
-     * @param \Illuminate\Contracts\Filesystem\Filesystem $storage
-     * @param string $directory
-     * @param int $days
-     * @param bool $deleteAll
-     * @param bool $autoCleanup
+     * @param string $storageDisk
+     * @param string $directoryName
+     * @param int $cleanupDays
      * @param bool $logging
      */
-    protected function deleteBackups( $storage, string $directory, int $days, bool $deleteAll, bool $autoCleanup, bool $logging ): void
+    protected function processCleanup( string $storageDisk, string $directoryName, int $cleanupDays, bool $logging ): void
     {
-        $files      = $storage->allFiles( $directory );
-        $cutoffDate = now()->subDays( $days )->getTimestamp();
+        $this->info( "🔄 Processing cleanup..." );
 
-        foreach ( $files as $filePath ) {
-            $timestamp = $storage->lastModified( $filePath );
-
-            if ( $deleteAll || ( $autoCleanup && $timestamp < $cutoffDate ) ) {
-                $storage->delete( $filePath );
-                $this->info( "Deleted backup: $filePath" );
-
-                if ( $logging ) {
-                    Log::info( "Database backup: Deleted backup file", [ 'file' => $filePath ] );
-                }
-            }
-        }
-    }
-
-    /**
-     * Create a backup of the database and store it in the specified directory.
-     *
-     * @param \Illuminate\Contracts\Filesystem\Filesystem $storage
-     * @param string $directory
-     * @param bool $logging
-     */
-    protected function createBackup( $storage, string $directory, bool $logging ): void
-    {
-        $physicalPath = storage_path() . "/app/" . $directory;
+        $physicalPath = $this->getPhysicalPath( $storageDisk, $directoryName );
 
         if ( !file_exists( $physicalPath ) ) {
-            mkdir( $physicalPath, 0755, true );
-        }
-
-        if ( ! $storage->exists( $directory ) ) {
-            $storage->makeDirectory( $directory );
-        }
-
-        $now       = Carbon::now();
-        $filename  = "backup-" . $now->format( 'Y-m-d_H-i-s' ) . ".gz";
-        $full_path = $physicalPath . "/" . $filename;
-
-        $username = config( 'database.connections.mysql.username' );
-        $password = config( 'database.connections.mysql.password' );
-        $host     = config( 'database.connections.mysql.host' );
-        $database = config( 'database.connections.mysql.database' );
-        $port     = config( 'database.connections.mysql.port', '3306' );
-
-        $errorFile = tempnam( sys_get_temp_dir(), 'mysql_error_' );
-
-        $command = "mysqldump --user=" . escapeshellarg( $username ) . " --password=" . escapeshellarg( $password ) . " --host=" . escapeshellarg( $host ) . " --port=" . escapeshellarg( $port ) . " " . escapeshellarg( $database ) . " 2>" . escapeshellarg( $errorFile ) . " | gzip > " . escapeshellarg( $full_path );
-
-        $mysqldumpCheck = ( strtoupper( substr( PHP_OS, 0, 3 ) ) === 'WIN' )
-            ? 'where mysqldump'
-            : 'which mysqldump';
-
-        exec( $mysqldumpCheck, $checkOutput, $checkResult );
-
-        if ( $checkResult !== 0 ) {
-            $this->error( 'mysqldump utility not found in system PATH.' );
-            if ( $logging ) {
-                Log::error( 'Database backup: mysqldump utility not found.' );
-            }
+            $this->info( "Directory does not exist: $physicalPath" );
             return;
         }
 
+        $physicalFiles = scandir( $physicalPath );
+        $backupFiles   = array_filter( $physicalFiles, function( $file ) {
+            return $file !== '.' && $file !== '..' && strpos( $file, 'backup-' ) === 0;
+        });
+
+        if ( empty( $backupFiles ) ) {
+            $this->info( "No backup files found for cleanup" );
+            return;
+        }
+
+        $this->info( "Found " . count( $backupFiles ) . " backup files" );
+        $deletedCount = 0;
+
+        foreach ( $backupFiles as $filename ) {
+            $filePath = $physicalPath . "/" . $filename;
+            $timestamp = filemtime( $filePath );
+
+            if ( $this->shouldDeleteFile( $timestamp, $cleanupDays ) ) {
+                unlink( $filePath );
+                $this->info( "✅ Deleted: $filename" );
+                $deletedCount++;
+
+                if ( $logging ) {
+                    Log::info( "Database backup: Deleted backup file", [ 'file' => $filename ] );
+                }
+            }
+        }
+
+        $this->info( "Cleanup completed: $deletedCount files deleted" );
+    }
+
+    /**
+     * Create a new backup
+     *
+     * @param string $storageDisk
+     * @param string $directoryName
+     * @param bool $logging
+     */
+    protected function createBackup( string $storageDisk, string $directoryName, bool $logging ): void
+    {
+        $this->info( "💾 Creating backup..." );
+
+        $filename     = "backup-" . Carbon::now()->format('Y-m-d_H-i-s') . ".gz";
+        $physicalPath = $this->getPhysicalPath( $storageDisk, $directoryName );
+        $full_path    = $physicalPath . "/" . $filename;
+
+        // Ensure directory exists
+        $this->ensureDirectoryExists( $physicalPath, $storageDisk, $directoryName );
+
+        // Execute mysqldump
+        $command = $this->buildMysqldumpCommand( $full_path );
         exec( $command, $output, $returnVar );
 
-        $errorOutput = file_exists( $errorFile ) ? file_get_contents( $errorFile ) : '';
-
-        if ( file_exists( $errorFile ) ) {
-            unlink( $errorFile );
-        }
-
+        // Check result
         $fileSize = file_exists( $full_path ) ? filesize( $full_path ) : 0;
 
-        if ( !empty( $errorOutput ) ) {
-            $this->warn( "mysqldump warning: " . trim( $errorOutput ) );
-        }
-
         if ( $fileSize > 0 ) {
-            $this->info( "Backup created successfully: $filename (size: " . number_format( $fileSize / 1024, 2 ) . " KB)" );
+            $this->info( "✅ Backup created: $filename (" . number_format( $fileSize / 1024, 2 ) . " KB)" );
 
             if ( $logging ) {
                 Log::info( "Database backup: Backup created successfully", [
                     'filename' => $filename,
                     'path'     => $full_path,
                     'size'     => $fileSize,
-                    'database' => $database,
+                    'database' => config( 'database.connections.mysql.database' ),
                 ]);
             }
         } else {
-            $this->error( "Backup failed - no file created" );
+            $this->error( "❌ Backup failed - no file created" );
 
             if ( $logging ) {
                 Log::error( "Database backup: No file created", [
-                    'database' => $database,
+                    'database' => config( 'database.connections.mysql.database' )
                 ]);
             }
         }
+    }
+
+    /**
+     * Determine if a file should be deleted based on its timestamp
+     *
+     * @param int $timestamp
+     * @param int $cleanupDays
+     * @return bool
+     */
+    protected function shouldDeleteFile( int $timestamp, int $cleanupDays ): bool
+    {
+        if ( $this->option( 'all' ) ) {
+            return true;
+        }
+
+        if ( $this->option( 'd' ) || $this->option( 'auto' ) ) {
+            return $timestamp < now()->subDays( $cleanupDays )->getTimestamp();
+        }
+
+        return false;
+    }
+
+    /**
+     * Ensure the backup directory exists
+     *
+     * @param string $physicalPath
+     * @param string $storageDisk
+     * @param string $directoryName
+     */
+    protected function ensureDirectoryExists( string $physicalPath, string $storageDisk, string $directoryName ): void
+    {
+        if ( !file_exists( $physicalPath ) ) {
+            mkdir( $physicalPath, 0755, true );
+        }
+
+        if ( !Storage::disk( $storageDisk )->exists( $directoryName ) ) {
+            Storage::disk( $storageDisk )->makeDirectory( $directoryName );
+        }
+    }
+
+    /**
+     * Build mysqldump command
+     *
+     * @param string $outputPath
+     * @return string
+     */
+    protected function buildMysqldumpCommand( string $outputPath ): string
+    {
+        $username = config( 'database.connections.mysql.username' );
+        $password = config( 'database.connections.mysql.password' );
+        $host     = config( 'database.connections.mysql.host' );
+        $database = config( 'database.connections.mysql.database' );
+        $port     = config( 'database.connections.mysql.port', '3306' );
+
+        return "mysqldump --user=" . escapeshellarg( $username ) .
+               " --password=" . escapeshellarg( $password ) .
+               " --host=" . escapeshellarg( $host ) .
+               " --port=" . escapeshellarg( $port ) .
+               " --single-transaction " .
+               escapeshellarg( $database ) .
+               " | gzip > " . escapeshellarg( $outputPath );
+    }
+
+    /**
+     * Get the physical path to the directory depending on the disk setting
+     *
+     * @param string $storageDisk
+     * @param string $directoryName
+     * @return string
+     */
+    protected function getPhysicalPath( string $storageDisk, string $directoryName ): string
+    {
+        $diskConfig = config( "filesystems.disks.{$storageDisk}" );
+
+        if ( $storageDisk === 'local' ) {
+            return storage_path( "app/{$directoryName}" );
+        }
+
+        // For other disks, use root from the configuration
+        if ( isset( $diskConfig['root'] ) ) {
+            return rtrim( $diskConfig['root'], '/' ) . '/' . $directoryName;
+        }
+
+        // Fallback to local
+        return storage_path( "app/{$directoryName}" );
     }
 }
