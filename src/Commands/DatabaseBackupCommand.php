@@ -240,11 +240,7 @@ class DatabaseBackupCommand extends Command
     {
         $diskConfig = config( "filesystems.disks.{$storageDisk}" );
 
-        if ( $storageDisk === 'local' ) {
-            return storage_path( "app/{$directoryName}" );
-        }
-
-        // For other disks, use root from the configuration
+        // For all disks, use root from the configuration
         if ( isset( $diskConfig['root'] ) ) {
             return rtrim( $diskConfig['root'], '/' ) . '/' . $directoryName;
         }
