@@ -16,18 +16,52 @@ return [
     | Older backups will be deleted when using --auto or --d options.
     |
     */
-    'cleanup_days' => env( 'BACKUP_DB_CLEANUP_DAYS', 15 ),
+    'cleanup_days' => env( 'BACKUP_DB_CLEANUP_DAYS', 5 ),
 
     /*
     |--------------------------------------------------------------------------
     | Auto Schedule
     |--------------------------------------------------------------------------
     |
-    | Enable automatic daily backup scheduling.
-    | If enabled, backup will run daily with --auto option.
+    | Enable automatic backup scheduling.
+    | If enabled, backup will run automatically with --auto option.
     |
     */
     'auto_schedule' => env( 'BACKUP_DB_AUTO_SCHEDULE', true ),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Schedule Time
+    |--------------------------------------------------------------------------
+    |
+    | Time when the backup should run (24-hour format).
+    | Examples: '00:15', '02:30', '14:00'
+    |
+    */
+    'schedule_time' => env( 'BACKUP_DB_SCHEDULE_TIME', '00:15' ),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Schedule Frequency
+    |--------------------------------------------------------------------------
+    |
+    | How often the backup should run.
+    | Options: 'daily', 'weekly', 'monthly'
+    |
+    */
+    'schedule_frequency' => env( 'BACKUP_DB_SCHEDULE_FREQUENCY', 'daily' ),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Schedule Day (for weekly/monthly)
+    |--------------------------------------------------------------------------
+    |
+    | For weekly: day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
+    | For monthly: day of month (1-31)
+    | Ignored for daily frequency.
+    |
+    */
+    'schedule_day' => env( 'BACKUP_DB_SCHEDULE_DAY', 1 ),
 
     /*
     |--------------------------------------------------------------------------

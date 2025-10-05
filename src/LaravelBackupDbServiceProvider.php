@@ -28,11 +28,28 @@ class LaravelBackupDbServiceProvider extends ServiceProvider
         // Auto schedule if enabled
         if ( config( 'backup-db.auto_schedule', true ) ) {
             $this->app->booted( function () {
-                $schedule = $this->app->make( Schedule::class );
-                $schedule->command('yas:backup --auto')
-                        ->dailyAt('00:15')
+                $schedule           = $this->app->make( Schedule::class );
+                $scheduleTime       = config( 'backup-db.schedule_time', '00:15' );
+                $scheduleFrequency  = config( 'backup-db.schedule_frequency', 'daily' );
+                $scheduleDay        = config( 'backup-db.schedule_day', 1 );
+
+                $command = $schedule->command( 'yas:backup --auto' )
                         ->withoutOverlapping()
                         ->runInBackground();
+
+                // Set schedule based on frequency
+                switch ( $scheduleFrequency ) {
+                    case 'weekly':
+                        $command->weeklyOn( $scheduleDay, $scheduleTime );
+                        break;
+                    case 'monthly':
+                        $command->monthlyOn( $scheduleDay, $scheduleTime );
+                        break;
+                    case 'daily':
+                    default:
+                        $command->dailyAt( $scheduleTime );
+                        break;
+                }
             });
         }
     }

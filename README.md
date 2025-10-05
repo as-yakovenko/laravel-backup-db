@@ -37,8 +37,17 @@ return [
     // Number of days to keep backups
     'cleanup_days' => env('BACKUP_DB_CLEANUP_DAYS', 15),
     
-    // Enable automatic daily backup scheduling
+    // Enable automatic backup scheduling
     'auto_schedule' => env('BACKUP_DB_AUTO_SCHEDULE', true),
+    
+    // Time when backup should run (24-hour format)
+    'schedule_time' => env('BACKUP_DB_SCHEDULE_TIME', '00:15'),
+    
+    // How often backup should run: 'daily', 'weekly', 'monthly'
+    'schedule_frequency' => env('BACKUP_DB_SCHEDULE_FREQUENCY', 'daily'),
+    
+    // Day for weekly/monthly backups (0=Sunday, 1=Monday, etc. for weekly; 1-31 for monthly)
+    'schedule_day' => env('BACKUP_DB_SCHEDULE_DAY', 1),
     
     // Storage disk for backups
     'storage_disk' => env('BACKUP_DB_STORAGE_DISK', 'local'),
@@ -53,7 +62,39 @@ return [
 
 ## Automatic Scheduling
 
-The package automatically schedules daily backups when `auto_schedule` is enabled in config. No need to manually add to `Kernel.php`!
+The package automatically schedules backups when `auto_schedule` is enabled in config. No need to manually add to `Kernel.php`!
+
+### Schedule Configuration Examples
+
+#### Daily Backup at 2:30 AM
+```env
+BACKUP_DB_SCHEDULE_TIME=02:30
+BACKUP_DB_SCHEDULE_FREQUENCY=daily
+```
+
+#### Weekly Backup on Fridays at 1:00 AM
+```env
+BACKUP_DB_SCHEDULE_TIME=01:00
+BACKUP_DB_SCHEDULE_FREQUENCY=weekly
+BACKUP_DB_SCHEDULE_DAY=5
+```
+
+#### Monthly Backup on 15th at 3:00 AM
+```env
+BACKUP_DB_SCHEDULE_TIME=03:00
+BACKUP_DB_SCHEDULE_FREQUENCY=monthly
+BACKUP_DB_SCHEDULE_DAY=15
+```
+
+#### Disable Automatic Scheduling
+```env
+BACKUP_DB_AUTO_SCHEDULE=false
+```
+
+**Note:** 
+- Time format: `HH:MM` (24-hour format)
+- Weekly days: 0=Sunday, 1=Monday, ..., 6=Saturday
+- Monthly days: 1-31
 
 ## Usage
 
